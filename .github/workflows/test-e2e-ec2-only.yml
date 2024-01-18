@@ -1,0 +1,14 @@
+name: Test ec2
+on:
+  workflow_dispatch: # be able to run the workflow on demand
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  e2e-test:
+    strategy:
+      fail-fast: false
+    uses: ./.github/workflows/appsignals-e2e-ec2-test.yml
+    secrets: inherit
