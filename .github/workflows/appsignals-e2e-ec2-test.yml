@@ -16,10 +16,10 @@ permissions:
 env:
   AWS_DEFAULT_REGION: us-east-1
   APP_SIGNALS_E2E_TEST_ACCOUNT_ID: ${{ secrets.APP_SIGNALS_E2E_TEST_ACCOUNT_ID }}
-  SAMPLE_APP_FRONTEND_SERVICE_JAR: "s3://aws-appsignals-sample-app/main-service.jar"
-  SAMPLE_APP_REMOTE_SERVICE_JAR: "s3://aws-appsignals-sample-app/remote-service.jar"
+  SAMPLE_APP_FRONTEND_SERVICE_JAR: "s3://sample-app-remote/sample-app.jar"
+  SAMPLE_APP_REMOTE_SERVICE_JAR: "s3://sample-app-remote/sample-app-remote.jar"
   GET_ADOT_JAR_COMMANBD: "wget -O adot.jar https://github.com/aws-observability/aws-otel-java-instrumentation/releases/latest/download/aws-opentelemetry-agent.jar"
-  GET_CW_AGENT_RPM_COMMAND: "aws s3 cp s3://${{ secrets.S3_INTEGRATION_BUCKET }}/integration-test/amazon-cloudwatch-agent-123-1.rpm ./cw-agent.rpm"
+  GET_CW_AGENT_RPM_COMMAND: "aws s3 cp s3://cwagent-rpm/integration-test/amazon-cloudwatch-agent-123-1.rpm ./cw-agent.rpm"
   METRIC_NAMESPACE: AppSignals
   LOG_GROUP_NAME: /aws/appsignals/generic
 
@@ -89,7 +89,7 @@ jobs:
         run: |
           attempt_counter=0
           max_attempts=30
-          until $(curl --output /dev/null --silent --head --fail http://${{ env.MAIN_SERVICE_ENDPOINT }}); do
+          until $(curl --output /dev/null --head --fail http://${{ env.MAIN_SERVICE_ENDPOINT }}); do
             if [ ${attempt_counter} -eq ${max_attempts} ];then
               echo "Max attempts reached"
               exit 1
