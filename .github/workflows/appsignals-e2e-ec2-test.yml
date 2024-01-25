@@ -30,7 +30,7 @@ jobs:
       - name: Get testing resources from ADOT
         uses: actions/checkout@v4
         with:
-          repository: aws-observability/aws-otel-java-instrumentation
+          repository: jj22ee/aws-otel-java-instrumentation
           ref: main
 
       - name: Download patch action script
