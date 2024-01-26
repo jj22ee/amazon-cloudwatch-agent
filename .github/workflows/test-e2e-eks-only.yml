@@ -1,8 +1,8 @@
 name: Test
 on:
   workflow_dispatch: # be able to run the workflow on demand
-  schedule:
-      - cron: '0/10 * * * *'
+  # schedule:
+  #     - cron: '0/10 * * * *'
 permissions:
   id-token: write
   contents: read
