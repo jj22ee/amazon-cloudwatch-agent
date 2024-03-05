@@ -56,10 +56,58 @@ jobs:
         run: |
           cat namespace.yaml
 
+      - name: Get amazon-cloudwatch-agent-operator
+        uses: actions/checkout@v4
+        with:
+          repository: aws/amazon-cloudwatch-agent-operator
+          # SHA as of March 4
+          ref: abf75babe672412cb63c56cbcf1c5ce2d8c97a1c
+          path: amazon-cloudwatch-agent-operator
+
+      - name: A
+        run: |
+          deployment_failed=1
+          deployment_failed=5
+          if [ $deployment_failed -eq 5 ]; then
+            echo "A"
+          fi
+          echo "REMOTE_APP_POD"="$deployment_failed" >> $GITHUB_ENV
+
+      - name: B
+        run: |
+          if [ ${{ env.REMOTE_APP_POD }} -eq 5 ]; then
+            echo "B"
+          fi
+
+      - name: C
+        run: |
+          if [ ${{ env.REMOTE_APP_POD }} -eq 1 ]; then
+            echo "B"
+          fi
+          echo $(pwd)
+          mkdir ./test
+          mkdir ./test/test2
+          cd ./test/test2
+          echo $(pwd)
+          cd ../../
+          echo $(pwd)
+          cd ./amazon-cloudwatch-agent-operator
+          echo $(pwd)
+          echo $(ls)
+
+      - name: D
+        working-directory: ./
+        run: |
+          echo $(pwd)
+          echo $(ls)
+
+
       - name: restart sample apps
         run: |
           echo "SAMPLE_APP_POD"=$(echo testA) >> $GITHUB_ENV
           echo "REMOTE_APP_POD"=$(echo testB) >> $GITHUB_ENV
+
+
 
       - name: Install Helm
         uses: azure/setup-helm@v3
