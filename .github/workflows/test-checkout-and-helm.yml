@@ -1,0 +1,67 @@
+name: Test checkout and helm
+on:
+  workflow_dispatch: # be able to run the workflow on demand
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+
+  e2e-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get amazon-cloudwatch-agent-operator
+        uses: actions/checkout@v4
+        with:
+          repository: aws/amazon-cloudwatch-agent-operator
+          # SHA as of March 4
+          ref: abf75babe672412cb63c56cbcf1c5ce2d8c97a1c
+          path: amazon-cloudwatch-agent-operator
+
+      - name: Sed tests
+        working-directory: amazon-cloudwatch-agent-operator/helm/
+        run: |
+          sed -i 's/clusterName:/clusterName: e2e-canary-test/g' values.yaml
+          sed -i 's/region:/region: us-east-1/g' values.yaml
+          sed -i 's/repository: cloudwatch-agent-operator/repository: cwagent-operator-pre-release/g' values.yaml
+          sed -i 's/tag: 1.0.2/tag: latest/g' values.yaml
+          sed -i 's/public: public.ecr.aws\/cloudwatch-agent/public: 506463145083.dkr.ecr.us-west-2.amazonaws.com/g' values.yaml
+          sed -i 's/repository: ghcr.io\/open-telemetry\/opentelemetry-operator\/autoinstrumentation-python/repository: test.dkr.ecr.us-east-1.amazonaws.com\/image/g' values.yaml
+          sed -i 's/tag: 0.43b0/tag: latest/g' values.yaml
+
+      - name: Print edits
+        working-directory: amazon-cloudwatch-agent-operator/helm/
+        run: |
+          cat values.yaml
+      
+      - name: Namespace
+        working-directory: amazon-cloudwatch-agent-operator/
+        run: |
+          cat <<EOF > ./namespace.yaml
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: amazon-cloudwatch
+            labels:
+              name: amazon-cloudwatch
+          EOF
+
+      - name: Print Namespace
+        working-directory: amazon-cloudwatch-agent-operator/
+        run: |
+          cat namespace.yaml
+
+      - name: restart sample apps
+        run: |
+          echo "SAMPLE_APP_POD"=$(echo testA) >> $GITHUB_ENV
+          echo "REMOTE_APP_POD"=$(echo testB) >> $GITHUB_ENV
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
+      - name: kubectl and helm
+        working-directory: amazon-cloudwatch-agent-operator/
+        run: |
+          helm template amazon-cloudwatch-observability ./helm --include-crds --namespace amazon-cloudwatch | kubectl apply --namespace amazon-cloudwatch --server-side --force-conflicts -f -
+
