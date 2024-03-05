@@ -6,6 +6,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  URL_WITH_SLASH: test.com/something/image/ecr:latest
+
+
 jobs:
 
   e2e-test:
@@ -27,7 +31,7 @@ jobs:
           sed -i 's/repository: cloudwatch-agent-operator/repository: cwagent-operator-pre-release/g' values.yaml
           sed -i 's/tag: 1.0.2/tag: latest/g' values.yaml
           sed -i 's/public: public.ecr.aws\/cloudwatch-agent/public: 506463145083.dkr.ecr.us-west-2.amazonaws.com/g' values.yaml
-          sed -i 's/repository: ghcr.io\/open-telemetry\/opentelemetry-operator\/autoinstrumentation-python/repository: test.dkr.ecr.us-east-1.amazonaws.com\/image/g' values.yaml
+          sed -i 's~repository: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python~repository: ${{ env.URL_WITH_SLASH }}~g' values.yaml
           sed -i 's/tag: 0.43b0/tag: latest/g' values.yaml
 
       - name: Print edits
@@ -63,5 +67,7 @@ jobs:
       - name: kubectl and helm
         working-directory: amazon-cloudwatch-agent-operator/
         run: |
+
           helm template amazon-cloudwatch-observability ./helm --include-crds --namespace amazon-cloudwatch | kubectl apply --namespace amazon-cloudwatch --server-side --force-conflicts -f -
+
 
