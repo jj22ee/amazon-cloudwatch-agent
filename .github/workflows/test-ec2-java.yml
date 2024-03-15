@@ -16,4 +16,4 @@ jobs:
     secrets: inherit
     with:
       aws-region: ${{ matrix.aws-region }}
-      test-cluster-name: 'e2e-canary-test'
+      caller-workflow-name: 'test-ec2-java'
