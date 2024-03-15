@@ -182,7 +182,16 @@ jobs:
               ${{ inputs.aws-region }} \
               ${{ env.SAMPLE_APP_NAMESPACE }} && \
               aws eks update-kubeconfig --name ${{ inputs.test-cluster-name }} --region ${{ inputs.aws-region }}"
-          
+
+
+
+
+              kubectl patch amazoncloudwatchagents -n amazon-cloudwatch cloudwatch-agent --type='json' -p='[{"op": "replace", "path": "/spec/image", "value": 633008270581.dkr.ecr.us-east-1.amazonaws.com/cwagent:latest}]'
+              kubectl delete pods --all -n amazon-cloudwatch
+              kubectl wait --for=condition=Ready pod --all -n amazon-cloudwatch
+
+
+
               kubectl delete pods --all -n ${{ env.SAMPLE_APP_NAMESPACE }}
               kubectl wait --for=condition=Ready pod --all -n ${{ env.SAMPLE_APP_NAMESPACE }}
           
