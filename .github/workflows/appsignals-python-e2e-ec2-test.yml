@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: jj22ee/aws-application-signals-test-framework
-          ref: 7785b97de2adb2bb7c61e47c9ac02c267fb5a151
+          ref: remote-target-tests-updated
           fetch-depth: 0
 
       - name: Set CW Agent RPM environment variable
