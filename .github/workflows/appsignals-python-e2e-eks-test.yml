@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: jj22ee/aws-application-signals-test-framework
-          ref: main
+          ref: 7785b97de2adb2bb7c61e47c9ac02c267fb5a151
           fetch-depth: 0
 
       - name: Generate testing id
@@ -212,6 +212,16 @@ jobs:
               helm template amazon-cloudwatch-observability ./helm --include-crds --namespace amazon-cloudwatch | kubectl apply --namespace amazon-cloudwatch --server-side --force-conflicts -f -
 
               kubectl wait --for=condition=Ready pod --all -n amazon-cloudwatch
+
+
+
+              kubectl patch amazoncloudwatchagents -n amazon-cloudwatch cloudwatch-agent --type='json' -p='[{"op": "replace", "path": "/spec/image", "value": 633008270581.dkr.ecr.us-east-1.amazonaws.com/cwagent:latest}]'
+              kubectl delete pods --all -n amazon-cloudwatch
+              kubectl wait --for=condition=Ready pod --all -n amazon-cloudwatch
+
+
+
+
               kubectl delete pods --all -n ${{ env.PYTHON_SAMPLE_APP_NAMESPACE }}
               kubectl wait --for=condition=Ready pod --all -n ${{ env.PYTHON_SAMPLE_APP_NAMESPACE }}
               cd ${{ github.workspace }}/terraform/python/eks
@@ -304,7 +314,7 @@ jobs:
         run: |
           curl -S -s -o /dev/null http://${{ env.APP_ENDPOINT }}/outgoing-http-call
           curl -S -s -o /dev/null http://${{ env.APP_ENDPOINT }}/aws-sdk-call
-          curl -S -s -o /dev/null http://${{ env.APP_ENDPOINT }}/aws-sdk-call?id=${{ env.TESTING_ID }}
+          curl -S -s -o /dev/null http://${{ env.APP_ENDPOINT }}/aws-sdk-call?testingId=${{ env.TESTING_ID }}
           curl -S -s -o /dev/null http://${{ env.APP_ENDPOINT }}/remote-service?ip=${{ env.REMOTE_SERVICE_POD_IP }}
           curl -S -s -o /dev/null http://${{ env.APP_ENDPOINT }}/client-call
 
@@ -341,7 +351,7 @@ jobs:
           --service-name python-application-${{ env.TESTING_ID }}
           --remote-service-name python-remote-application-${{ env.TESTING_ID }}
           --remote-service-deployment-name ${{ env.REMOTE_SERVICE_DEPLOYMENT_NAME }}
-          --request-body ip=${{ env.REMOTE_SERVICE_POD_IP }}&id=${{ env.TESTING_ID }}
+          --request-body ip=${{ env.REMOTE_SERVICE_POD_IP }}&testingId=${{ env.TESTING_ID }}
           --rollup'
 
       - name: Call endpoints and validate generated traces
