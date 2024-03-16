@@ -41,11 +41,12 @@ jobs:
       - name: Get testing resources from aws-application-signals-test-framework
         uses: actions/checkout@v4
         with:
-          repository: aws-observability/aws-application-signals-test-framework
-          ref: main
+          repository: jj22ee/aws-application-signals-test-framework
+          ref: 7785b97de2adb2bb7c61e47c9ac02c267fb5a151
+          fetch-depth: 0
 
       - name: Set CW Agent RPM environment variable
-        run: echo GET_CW_AGENT_RPM_COMMAND="wget -O cw-agent.rpm https://amazoncloudwatch-agent-${{ inputs.aws-region }}.s3.${{ inputs.aws-region }}.amazonaws.com/amazon_linux/amd64/1.300031.0b313/amazon-cloudwatch-agent.rpm" >> $GITHUB_ENV
+        run: echo GET_CW_AGENT_RPM_COMMAND="wget -O cw-agent.rpm https://amazoncloudwatch-agent-${{ inputs.aws-region }}.s3.${{ inputs.aws-region }}.amazonaws.com/amazon_linux/amd64/1.300033.0b462/amazon-cloudwatch-agent.rpm" >> $GITHUB_ENV
 
       - name: Generate testing id
         run: echo TESTING_ID="${{ github.run_id }}-${{ github.run_number }}" >> $GITHUB_ENV
@@ -174,6 +175,7 @@ jobs:
         run: |
           curl -S -s -o /dev/null http://${{ env.MAIN_SERVICE_ENDPOINT }}/outgoing-http-call
           curl -S -s -o /dev/null http://${{ env.MAIN_SERVICE_ENDPOINT }}/aws-sdk-call
+          curl -S -s -o /dev/null http://${{ env.MAIN_SERVICE_ENDPOINT }}/aws-sdk-call?testingId=${{ env.TESTING_ID }}
           curl -S -s -o /dev/null http://${{ env.MAIN_SERVICE_ENDPOINT }}/remote-service?ip=${{ env.REMOTE_SERVICE_IP }}
           curl -S -s -o /dev/null http://${{ env.MAIN_SERVICE_ENDPOINT }}/client-call
 
@@ -207,7 +209,7 @@ jobs:
           --log-group ${{ env.LOG_GROUP_NAME }}
           --service-name python-sample-application-${{ env.TESTING_ID }}
           --remote-service-name python-sample-remote-application-${{ env.TESTING_ID }}
-          --request-body ip=${{ env.REMOTE_SERVICE_IP }}
+          --request-body ip=${{ env.REMOTE_SERVICE_IP }}&testingId=${{ env.TESTING_ID }}
           --instance-ami ${{ env.EC2_INSTANCE_AMI }}
           --rollup'
 
