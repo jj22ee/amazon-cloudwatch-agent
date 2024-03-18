@@ -216,7 +216,7 @@ jobs:
           --service-name sample-application-${{ env.TESTING_ID }}
           --remote-service-name sample-remote-application-${{ env.TESTING_ID }}
           --remote-target-name ::s3:::e2e-test-bucket-name-${{ env.TESTING_ID }}
-          --request-body ip=${{ env.REMOTE_SERVICE_IP }}&testingId=${{ env.TESTING_ID }}
+          --request-body ip=${{ env.REMOTE_SERVICE_IP }}
           --instance-ami ${{ env.EC2_INSTANCE_AMI }}
           --rollup'
 
