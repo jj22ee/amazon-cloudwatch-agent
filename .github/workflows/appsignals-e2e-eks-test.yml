@@ -186,9 +186,9 @@ jobs:
 
 
 
-              kubectl patch amazoncloudwatchagents -n amazon-cloudwatch cloudwatch-agent --type='json' -p='[{"op": "replace", "path": "/spec/image", "value": 633008270581.dkr.ecr.us-east-1.amazonaws.com/cwagent:latest}]'
-              kubectl delete pods --all -n amazon-cloudwatch
-              kubectl wait --for=condition=Ready pod --all -n amazon-cloudwatch
+              # kubectl patch amazoncloudwatchagents -n amazon-cloudwatch cloudwatch-agent --type='json' -p='[{"op": "replace", "path": "/spec/image", "value": 633008270581.dkr.ecr.us-east-1.amazonaws.com/cwagent:latest}]'
+              # kubectl delete pods --all -n amazon-cloudwatch
+              # kubectl wait --for=condition=Ready pod --all -n amazon-cloudwatch
 
 
 
