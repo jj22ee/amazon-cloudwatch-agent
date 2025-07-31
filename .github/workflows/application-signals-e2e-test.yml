@@ -214,3 +214,7 @@ jobs:
     with:
       aws-region: us-east-1
       caller-workflow-name: 'main-build'
+
+  validate-all-tests-are-accounted-for:
+    uses: jj22ee/aws-application-signals-test-framework/.github/workflows/validate-e2e-tests-are-accounted-for.yml@main
+    secrets: inherit
