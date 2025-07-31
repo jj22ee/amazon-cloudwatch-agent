@@ -107,22 +107,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  StartApplicationSignalsE2ETestsPart1:
+  StartApplicationSignalsE2ETests:
     needs: [ BuildAndUploadPackages, BuildAndUploadITAR, BuildAndUploadCN, BuildDocker ]
     # Workflow only runs against main
     if: ${{ github.event_name == 'push' || inputs.test-image-before-upload }}
     runs-on: ubuntu-latest
     steps:
-      - run: gh workflow run application-signals-e2e-test-part1.yml --ref ${{ github.ref_name }} --repo $GITHUB_REPOSITORY -f build_run_id=${{ github.run_id }} -f build_sha=${{ github.sha }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  StartApplicationSignalsE2ETestsPart2:
-    needs: [ BuildAndUploadPackages, BuildAndUploadITAR, BuildAndUploadCN, BuildDocker ]
-    # Workflow only runs against main
-    if: ${{ github.event_name == 'push' || inputs.test-image-before-upload }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh workflow run application-signals-e2e-test-part2.yml --ref ${{ github.ref_name }} --repo $GITHUB_REPOSITORY -f build_run_id=${{ github.run_id }} -f build_sha=${{ github.sha }}
+      - run: gh workflow run application-signals-e2e-test.yml --ref ${{ github.ref_name }} --repo $GITHUB_REPOSITORY -f build_run_id=${{ github.run_id }} -f build_sha=${{ github.sha }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
