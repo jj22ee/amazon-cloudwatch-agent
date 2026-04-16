@@ -66,12 +66,14 @@ import (
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 
 	"github.com/aws/amazon-cloudwatch-agent/extension/agenthealth"
+	"github.com/aws/amazon-cloudwatch-agent/extension/cwlogsauth"
 	"github.com/aws/amazon-cloudwatch-agent/extension/entitystore"
 	"github.com/aws/amazon-cloudwatch-agent/extension/k8smetadata"
 	"github.com/aws/amazon-cloudwatch-agent/extension/nodemetadatacache"
 	"github.com/aws/amazon-cloudwatch-agent/extension/server"
 	"github.com/aws/amazon-cloudwatch-agent/plugins/outputs/cloudwatch"
 	"github.com/aws/amazon-cloudwatch-agent/plugins/processors/awsapplicationsignals"
+	"github.com/aws/amazon-cloudwatch-agent/processor/clientmetadata"
 	"github.com/aws/amazon-cloudwatch-agent/plugins/processors/awsentity"
 	"github.com/aws/amazon-cloudwatch-agent/plugins/processors/awsneuron"
 	"github.com/aws/amazon-cloudwatch-agent/plugins/processors/ec2tagger"
@@ -122,6 +124,7 @@ func Factories() (otelcol.Factories, error) {
 		awsdevicepodcorrelationprocessor.NewFactory(),
 		awsneuron.NewFactory(),
 		batchprocessor.NewFactory(),
+		clientmetadata.NewFactory(),
 		cumulativetodeltaprocessor.NewFactory(),
 		deltatocumulativeprocessor.NewFactory(),
 		deltatorateprocessor.NewFactory(),
@@ -164,6 +167,7 @@ func Factories() (otelcol.Factories, error) {
 	if factories.Extensions, err = otelcol.MakeFactoryMap[extension.Factory](
 		agenthealth.NewFactory(),
 		awsproxy.NewFactory(),
+		cwlogsauth.NewFactory(),
 		entitystore.NewFactory(),
 		k8smetadata.NewFactory(),
 		nodemetadatacache.NewFactory(),

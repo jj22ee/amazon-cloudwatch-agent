@@ -1,0 +1,70 @@
+# POC 1 Test Config: cwlogsauth → sigv4auth + clientmetadata processor
+#
+# This config demonstrates dynamic log group routing based on service.name.
+# Each unique service.name gets its own log group:
+#   /test/telemetry/my-service-a
+#   /test/telemetry/my-service-b
+#
+# Auth chain (2 layers):
+#   1. cwlogsauth reads service.name from client.Metadata, sets x-aws-log-group
+#      header, creates log group/stream if needed
+#   2. sigv4auth signs the request with SigV4
+#
+# Pipeline:
+#   otlp receiver → clientmetadata processor → batch processor → otlphttp exporter
+#
+# To test:
+#   1. Build: go build -o cwagent ./cmd/amazon-cloudwatch-agent
+#   2. Run: ./cwagent --otelconfig test-config-poc1.yaml
+#   3. Send OTLP logs with different service.name values
+
+extensions:
+  sigv4auth/logs:
+    region: us-east-1
+    service: logs
+
+  cwlogsauth:
+    auth: sigv4auth/logs
+    log_group_name: "/test/telemetry/{ServiceName}"
+    log_stream_name: "default"
+    default_service_name: "UnknownService"
+    failure_backoff_seconds: 30
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  clientmetadata:
+    extractions:
+      - key: service.name
+        from_resource_attribute: service.name
+
+  batch:
+    metadata_keys:
+      - service.name
+    send_batch_size: 100
+    timeout: 5s
+
+exporters:
+  otlphttp/cw-logs:
+    endpoint: https://logs.us-east-1.amazonaws.com
+    logs_endpoint: https://logs.us-east-1.amazonaws.com/v1/logs
+    auth:
+      authenticator: cwlogsauth
+    compression: gzip
+
+  debug:
+    verbosity: detailed
+
+service:
+  extensions: [sigv4auth/logs, cwlogsauth]
+  pipelines:
+    logs/test:
+      receivers: [otlp]
+      processors: [clientmetadata, batch]
+      exporters: [otlphttp/cw-logs, debug]
