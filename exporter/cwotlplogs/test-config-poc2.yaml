@@ -1,0 +1,59 @@
+# POC 2 Test Config: cwotlplogs custom exporter
+#
+# This config demonstrates dynamic log group routing based on service.name
+# using a single custom exporter that handles everything:
+#   - Reads service.name from resource attributes (no clientmetadata processor needed)
+#   - Splits batches internally by service name (no batch metadata_keys needed)
+#   - Resolves {ServiceName} template in log group names
+#   - Auto-creates log groups/streams lazily
+#   - Signs requests via sigv4auth
+#
+# Each unique service.name gets its own log group:
+#   /test/telemetry/my-service-a
+#   /test/telemetry/my-service-b
+#
+# To test:
+#   1. Build: go build -o cwagent ./cmd/amazon-cloudwatch-agent
+#   2. Run: ./cwagent --otelconfig test-config-poc2.yaml
+#   3. Send OTLP logs with different service.name values
+
+extensions:
+  sigv4auth/logs:
+    region: us-east-1
+    service: logs
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 100
+    timeout: 5s
+
+exporters:
+  cwotlplogs:
+    endpoint: https://logs.us-east-1.amazonaws.com
+    log_group_name: "/test/telemetry/{ServiceName}"
+    log_stream_name: "default"
+    default_service_name: "UnknownService"
+    auto_create: true
+    failure_backoff_seconds: 30
+    auth:
+      authenticator: sigv4auth/logs
+    compression: gzip
+
+  debug:
+    verbosity: detailed
+
+service:
+  extensions: [sigv4auth/logs]
+  pipelines:
+    logs/test:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [cwotlplogs, debug]

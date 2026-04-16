@@ -65,6 +65,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/nopreceiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 
+	"github.com/aws/amazon-cloudwatch-agent/exporter/cwotlplogs"
 	"github.com/aws/amazon-cloudwatch-agent/extension/agenthealth"
 	"github.com/aws/amazon-cloudwatch-agent/extension/entitystore"
 	"github.com/aws/amazon-cloudwatch-agent/extension/k8smetadata"
@@ -153,6 +154,7 @@ func Factories() (otelcol.Factories, error) {
 		awsemfexporter.NewFactory(),
 		awsxrayexporter.NewFactory(),
 		cloudwatch.NewFactory(),
+		cwotlplogs.NewFactory(),
 		debugexporter.NewFactory(),
 		nopexporter.NewFactory(),
 		otlphttpexporter.NewFactory(),
