@@ -253,7 +253,11 @@ require (
 	k8s.io/klog/v2 v2.130.1
 )
 
-require github.com/safchain/ethtool v0.0.0-20210803160452-9aa261dae9b1
+require (
+	github.com/safchain/ethtool v0.0.0-20210803160452-9aa261dae9b1
+	go.opentelemetry.io/collector/config/configcompression v1.30.0
+	go.opentelemetry.io/collector/config/configretry v1.30.0
+)
 
 require (
 	cloud.google.com/go/auth v0.15.0 // indirect
@@ -555,10 +559,8 @@ require (
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector v0.124.0 // indirect
 	go.opentelemetry.io/collector/component/componentstatus v0.124.0 // indirect
-	go.opentelemetry.io/collector/config/configcompression v1.30.0 // indirect
 	go.opentelemetry.io/collector/config/configgrpc v0.124.0 // indirect
 	go.opentelemetry.io/collector/config/confignet v1.30.0 // indirect
-	go.opentelemetry.io/collector/config/configretry v1.30.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/httpprovider v1.30.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.30.0 // indirect
 	go.opentelemetry.io/collector/connector v0.124.0 // indirect
