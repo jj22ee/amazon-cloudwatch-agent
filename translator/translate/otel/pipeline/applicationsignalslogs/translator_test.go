@@ -46,14 +46,23 @@ func TestTranslatorWithAppSignalsLogs(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
-	assert.Equal(t, []string{"otlp/grpc_0_0_0_0_4315", "otlp/http_0_0_0_0_4316"},
-		collections.MapSlice(got.Receivers.Keys(), component.ID.String))
-	assert.Equal(t, []string{"attributestocontext", "batch/application_signals_logs"},
-		collections.MapSlice(got.Processors.Keys(), component.ID.String))
+	// Verify processors: transform → attributestocontext → batch
+	assert.Equal(t, []string{
+		"transform/application_signals_logs",
+		"attributestocontext",
+		"batch/application_signals_logs",
+	}, collections.MapSlice(got.Processors.Keys(), component.ID.String))
+
+	// Verify exporters
 	assert.Equal(t, []string{"otlphttp/appsignals_logs"},
 		collections.MapSlice(got.Exporters.Keys(), component.ID.String))
-	assert.Equal(t, []string{"sigv4auth/appsignals_logs", "awscloudwatchlogsprovisioner", "agenthealth/logs"},
-		collections.MapSlice(got.Extensions.Keys(), component.ID.String))
+
+	// Verify extensions
+	assert.Equal(t, []string{
+		"sigv4auth/appsignals_logs",
+		"awscloudwatchlogsprovisioner",
+		"agenthealth/logs",
+	}, collections.MapSlice(got.Extensions.Keys(), component.ID.String))
 }
 
 func TestTranslatorWithDebug(t *testing.T) {
@@ -93,7 +102,11 @@ func TestTranslatorWithCustomLogGroup(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
-	// The provisioner should be configured with the custom log group
+	// Verify the transform processor is present (handles the custom prefix)
+	processors := collections.MapSlice(got.Processors.Keys(), component.ID.String)
+	assert.Contains(t, processors, "transform/application_signals_logs")
+
+	// Verify the provisioner is configured
 	assert.Contains(t,
 		collections.MapSlice(got.Extensions.Keys(), component.ID.String),
 		"awscloudwatchlogsprovisioner")
@@ -111,6 +124,68 @@ func TestTranslatorWithFallbackKey(t *testing.T) {
 	got, err := tt.Translate(conf)
 	require.NoError(t, err)
 	require.NotNil(t, got)
+}
+
+func TestResolveLogConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		logGroupName   string
+		logStreamName  string
+		expectPrefix   string
+		expectStream   string
+	}{
+		{
+			name:         "default (no config)",
+			expectPrefix: defaultLogGroupPrefix,
+			expectStream: defaultLogStreamName,
+		},
+		{
+			name:         "with placeholder",
+			logGroupName: "/custom/prefix/{service.name}",
+			expectPrefix: "/custom/prefix/",
+			expectStream: defaultLogStreamName,
+		},
+		{
+			name:          "static group (no placeholder)",
+			logGroupName:  "/static/group",
+			logStreamName: "my-stream",
+			expectPrefix:  "/static/group",
+			expectStream:  "my-stream",
+		},
+		{
+			name:         "placeholder at start",
+			logGroupName: "{service.name}/suffix",
+			expectPrefix: "",
+			expectStream: defaultLogStreamName,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfgMap := map[string]interface{}{
+				"logs": map[string]interface{}{
+					"logs_collected": map[string]interface{}{
+						"application_signals": map[string]interface{}{},
+					},
+				},
+			}
+			if tt.logGroupName != "" {
+				appSignalsCfg := map[string]interface{}{
+					"log_group_name": tt.logGroupName,
+				}
+				if tt.logStreamName != "" {
+					appSignalsCfg["log_stream_name"] = tt.logStreamName
+				}
+				cfgMap["logs"].(map[string]interface{})["logs_collected"].(map[string]interface{})["application_signals"] = appSignalsCfg
+			}
+			conf := confmap.NewFromStringMap(cfgMap)
+			configKeys := common.AppSignalsConfigKeys[pipeline.SignalLogs]
+
+			prefix, stream := resolveLogConfig(conf, configKeys)
+			assert.Equal(t, tt.expectPrefix, prefix)
+			assert.Equal(t, tt.expectStream, stream)
+		})
+	}
 }
 
 func TestAutoEnableIfNeeded(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/awscloudwatchlogsprovisionerextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/sigv4authextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributestocontextprocessor"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/processor/batchprocessor"
@@ -19,18 +20,23 @@ import (
 	"github.com/aws/amazon-cloudwatch-agent/translator/translate/otel/exporter/otlphttp"
 )
 
+const (
+	// Metadata keys used to pass log group/stream from attributestocontext
+	// processor to the provisioner extension.
+	metadataKeyLogGroup  = "cwlogs.log_group"
+	metadataKeyLogStream = "cwlogs.log_stream"
+)
+
 // --- sigv4auth extension translator ---
 
-type sigV4AuthTranslator struct {
-	factory component.Factory
-}
+type sigV4AuthTranslator struct{}
 
 func newSigV4AuthTranslator() common.ComponentTranslator {
-	return &sigV4AuthTranslator{factory: sigv4authextension.NewFactory()}
+	return &sigV4AuthTranslator{}
 }
 
 func (t *sigV4AuthTranslator) ID() component.ID {
-	return component.NewIDWithName(t.factory.(component.Factory).Type(), "appsignals_logs")
+	return component.NewIDWithName(component.MustNewType("sigv4auth"), "appsignals_logs")
 }
 
 func (t *sigV4AuthTranslator) Translate(_ *confmap.Conf) (component.Config, error) {
@@ -48,13 +54,10 @@ func (t *sigV4AuthTranslator) Translate(_ *confmap.Conf) (component.Config, erro
 
 // --- awscloudwatchlogsprovisioner extension translator ---
 
-type provisionerTranslator struct {
-	logGroupName  string
-	logStreamName string
-}
+type provisionerTranslator struct{}
 
-func newProvisionerTranslator(logGroupName, logStreamName string) common.ComponentTranslator {
-	return &provisionerTranslator{logGroupName: logGroupName, logStreamName: logStreamName}
+func newProvisionerTranslator() common.ComponentTranslator {
+	return &provisionerTranslator{}
 }
 
 func (t *provisionerTranslator) ID() component.ID {
@@ -65,12 +68,62 @@ func (t *provisionerTranslator) Translate(_ *confmap.Conf) (component.Config, er
 	sigv4AuthID := component.NewIDWithName(component.MustNewType("sigv4auth"), "appsignals_logs")
 	cfg := awscloudwatchlogsprovisionerextension.NewFactory().CreateDefaultConfig().(*awscloudwatchlogsprovisionerextension.Config)
 	cfg.AdditionalAuth = &sigv4AuthID
-	cfg.LogGroupName = t.logGroupName
-	cfg.LogStreamName = t.logStreamName
+	cfg.LogGroupContextKey = metadataKeyLogGroup
+	cfg.LogStreamContextKey = metadataKeyLogStream
+	return cfg, nil
+}
+
+// --- transform processor translator ---
+// Builds full log group/stream names into resource attributes from service.name.
+// E.g., service.name="pet-clinic" + prefix="/aws/telemetry/" → cwlogs.log_group="/aws/telemetry/pet-clinic"
+
+type transformTranslator struct {
+	logGroupPrefix string
+	logStreamName  string
+}
+
+func newTransformTranslator(logGroupPrefix, logStreamName string) common.ComponentTranslator {
+	return &transformTranslator{logGroupPrefix: logGroupPrefix, logStreamName: logStreamName}
+}
+
+func (t *transformTranslator) ID() component.ID {
+	return component.NewIDWithName(component.MustNewType("transform"), pipelineName)
+}
+
+func (t *transformTranslator) Translate(_ *confmap.Conf) (component.Config, error) {
+	// Build the OTTL statements that construct the full log group/stream names
+	// as resource attributes, so attributestocontext can copy them to metadata.
+	concatStmt := fmt.Sprintf(
+		`set(resource.attributes["%s"], Concat(["%s", resource.attributes["service.name"]], ""))`,
+		metadataKeyLogGroup, t.logGroupPrefix,
+	)
+	streamStmt := fmt.Sprintf(
+		`set(resource.attributes["%s"], "%s")`,
+		metadataKeyLogStream, t.logStreamName,
+	)
+
+	cfgMap := map[string]interface{}{
+		"log_statements": []interface{}{
+			map[string]interface{}{
+				"context": "resource",
+				"statements": []interface{}{
+					concatStmt,
+					streamStmt,
+				},
+			},
+		},
+	}
+
+	cfg := transformprocessor.NewFactory().CreateDefaultConfig()
+	if err := confmap.NewFromStringMap(cfgMap).Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("failed to configure transform processor: %w", err)
+	}
 	return cfg, nil
 }
 
 // --- attributestocontext processor translator ---
+// Copies cwlogs.log_group and cwlogs.log_stream from resource attributes to
+// client.Metadata, making them available to the provisioner extension.
 
 type attributesToContextTranslator struct{}
 
@@ -87,9 +140,14 @@ func (t *attributesToContextTranslator) Translate(_ *confmap.Conf) (component.Co
 	cfgMap := map[string]interface{}{
 		"actions": []interface{}{
 			map[string]interface{}{
-				"key":                     "service.name",
+				"key":                     metadataKeyLogGroup,
 				"action":                  "upsert",
-				"from_resource_attribute": "service.name",
+				"from_resource_attribute": metadataKeyLogGroup,
+			},
+			map[string]interface{}{
+				"key":                     metadataKeyLogStream,
+				"action":                  "upsert",
+				"from_resource_attribute": metadataKeyLogStream,
 			},
 		},
 	}
@@ -113,7 +171,10 @@ func (t *batchTranslator) ID() component.ID {
 
 func (t *batchTranslator) Translate(_ *confmap.Conf) (component.Config, error) {
 	cfg := batchprocessor.NewFactory().CreateDefaultConfig().(*batchprocessor.Config)
-	cfg.MetadataKeys = []string{"service.name"}
+	// Both keys must be in metadata_keys — the batch processor creates a fresh
+	// context containing only the listed keys, discarding all other metadata.
+	// The provisioner extension needs both cwlogs.log_group and cwlogs.log_stream.
+	cfg.MetadataKeys = []string{metadataKeyLogGroup, metadataKeyLogStream}
 	cfg.SendBatchSize = 100
 	cfg.Timeout = 5 * time.Second
 	return cfg, nil
