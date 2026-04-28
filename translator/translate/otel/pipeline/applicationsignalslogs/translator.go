@@ -3,19 +3,24 @@
 
 // Package applicationsignalslogs translates logs.logs_collected.application_signals
 // into an OTel logs pipeline that routes OTLP logs to CloudWatch via the CW OTLP
-// endpoint with dynamic per-service log group routing.
+// endpoint.
 //
-// Generated pipeline:
+// Two pipeline shapes depending on whether placeholders like {service.name} are
+// used in log_group_name / log_stream_name:
+//
+// Dynamic (placeholders present):
 //
 //	receivers: [otlp]
-//	processors: [transform, attributestocontext, batch]
+//	processors: [transform, attributestocontext, batch(metadata_keys)]
 //	exporters: [otlphttp]
 //	extensions: [sigv4auth, awscloudwatchlogsprovisioner]
 //
-// The transform processor builds the full log group name from service.name into
-// a resource attribute. The attributestocontext processor copies it to
-// client.Metadata. The provisioner extension reads it from metadata, creates
-// the log group if needed, and sets the x-aws-log-group header.
+// Static (no placeholders):
+//
+//	receivers: [otlp]
+//	processors: [batch]
+//	exporters: [otlphttp(static headers)]
+//	extensions: [sigv4auth, awscloudwatchlogsprovisioner]
 package applicationsignalslogs
 
 import (
@@ -59,6 +64,7 @@ func (t *translator) Translate(conf *confmap.Conf) (*common.ComponentTranslators
 	}
 
 	logGroupTemplate, logStreamTemplate := resolveLogConfig(conf, configKeys)
+	dynamic := hasPlaceholders(logGroupTemplate) || hasPlaceholders(logStreamTemplate)
 
 	translators := &common.ComponentTranslators{
 		Receivers:  otlp.NewTranslators(conf, common.AppSignals, pipeline.SignalLogs.String()),
@@ -67,13 +73,18 @@ func (t *translator) Translate(conf *confmap.Conf) (*common.ComponentTranslators
 		Extensions: common.NewTranslatorMap[component.Config, component.ID](),
 	}
 
-	// Processors: transform (build log group/stream names) → attributestocontext → batch
-	translators.Processors.Set(newTransformTranslator(logGroupTemplate, logStreamTemplate))
-	translators.Processors.Set(newAttributesToContextTranslator())
-	translators.Processors.Set(newBatchTranslator())
-
-	// Exporter: otlphttp pointing to CW OTLP endpoint with provisioner as auth
-	translators.Exporters.Set(newOTLPHTTPExporterTranslator())
+	if dynamic {
+		translators.Processors.Set(newTransformTranslator(logGroupTemplate, logStreamTemplate))
+		translators.Processors.Set(newAttributesToContextTranslator())
+		translators.Processors.Set(newBatchWithMetadataKeysTranslator())
+		translators.Exporters.Set(newOTLPHTTPExporterTranslator(nil))
+	} else {
+		translators.Processors.Set(newBatchTranslator())
+		translators.Exporters.Set(newOTLPHTTPExporterTranslator(map[string]string{
+			"x-aws-log-group":  templateToLiteral(logGroupTemplate),
+			"x-aws-log-stream": templateToLiteral(logStreamTemplate),
+		}))
+	}
 
 	if enabled, _ := common.GetBool(conf, common.AgentDebugConfigKey); enabled {
 		translators.Exporters.Set(debug.NewTranslator(common.WithName(pipelineName)))
@@ -85,6 +96,23 @@ func (t *translator) Translate(conf *confmap.Conf) (*common.ComponentTranslators
 	translators.Extensions.Set(agenthealth.NewTranslator(agenthealth.LogsName, []string{agenthealth.OperationPutLogEvents}))
 
 	return translators, nil
+}
+
+func hasPlaceholders(segments []templateSegment) bool {
+	for _, seg := range segments {
+		if seg.attribute != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func templateToLiteral(segments []templateSegment) string {
+	var sb strings.Builder
+	for _, seg := range segments {
+		sb.WriteString(seg.literal)
+	}
+	return sb.String()
 }
 
 // templateSegment represents either a literal string or an attribute reference

@@ -182,9 +182,15 @@ func (t *attributesToContextTranslator) Translate(_ *confmap.Conf) (component.Co
 	return cfg, nil
 }
 
-// --- batch processor translator (with metadata_keys) ---
+// --- batch processor translators ---
 
-type batchTranslator struct{}
+type batchTranslator struct {
+	withMetadataKeys bool
+}
+
+func newBatchWithMetadataKeysTranslator() common.ComponentTranslator {
+	return &batchTranslator{withMetadataKeys: true}
+}
 
 func newBatchTranslator() common.ComponentTranslator {
 	return &batchTranslator{}
@@ -196,10 +202,9 @@ func (t *batchTranslator) ID() component.ID {
 
 func (t *batchTranslator) Translate(_ *confmap.Conf) (component.Config, error) {
 	cfg := batchprocessor.NewFactory().CreateDefaultConfig().(*batchprocessor.Config)
-	// Both keys must be in metadata_keys — the batch processor creates a fresh
-	// context containing only the listed keys, discarding all other metadata.
-	// The provisioner extension needs both cwlogs.log_group and cwlogs.log_stream.
-	cfg.MetadataKeys = []string{metadataKeyLogGroup, metadataKeyLogStream}
+	if t.withMetadataKeys {
+		cfg.MetadataKeys = []string{metadataKeyLogGroup, metadataKeyLogStream}
+	}
 	cfg.SendBatchSize = 100
 	cfg.Timeout = 5 * time.Second
 	return cfg, nil
@@ -207,7 +212,12 @@ func (t *batchTranslator) Translate(_ *confmap.Conf) (component.Config, error) {
 
 // newOTLPHTTPExporterTranslator creates the otlphttp exporter translator
 // using the awscloudwatchlogsprovisioner as the authenticator.
-func newOTLPHTTPExporterTranslator() common.ComponentTranslator {
+// When headers is non-nil, static x-aws-log-group/stream headers are set.
+func newOTLPHTTPExporterTranslator(headers map[string]string) common.ComponentTranslator {
 	provisionerID := component.MustNewID("awscloudwatchlogsprovisioner")
-	return otlphttp.NewTranslatorWithName("appsignals_logs", otlphttp.WithAuthenticator(provisionerID))
+	opts := []otlphttp.Option{otlphttp.WithAuthenticator(provisionerID)}
+	if len(headers) > 0 {
+		opts = append(opts, otlphttp.WithHeaders(headers))
+	}
+	return otlphttp.NewTranslatorWithName("appsignals_logs", opts...)
 }

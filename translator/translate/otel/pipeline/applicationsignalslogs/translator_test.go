@@ -102,11 +102,38 @@ func TestTranslatorWithCustomLogGroup(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
-	// Verify the transform processor is present (handles the custom prefix)
+	// Dynamic path: transform + attributestocontext + batch(metadata_keys)
 	processors := collections.MapSlice(got.Processors.Keys(), component.ID.String)
 	assert.Contains(t, processors, "transform/application_signals_logs")
+	assert.Contains(t, processors, "attributestocontext")
 
-	// Verify the provisioner is configured
+	assert.Contains(t,
+		collections.MapSlice(got.Extensions.Keys(), component.ID.String),
+		"awscloudwatchlogsprovisioner")
+}
+
+func TestTranslatorStaticLogGroup(t *testing.T) {
+	tt := NewTranslator()
+	conf := confmap.NewFromStringMap(map[string]interface{}{
+		"logs": map[string]interface{}{
+			"logs_collected": map[string]interface{}{
+				"application_signals": map[string]interface{}{
+					"log_group_name":  "/static/my-app",
+					"log_stream_name": "my-stream",
+				},
+			},
+		},
+	})
+	got, err := tt.Translate(conf)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// Static path: only batch, no transform or attributestocontext
+	processors := collections.MapSlice(got.Processors.Keys(), component.ID.String)
+	assert.Equal(t, []string{"batch/application_signals_logs"}, processors)
+	assert.NotContains(t, processors, "transform/application_signals_logs")
+	assert.NotContains(t, processors, "attributestocontext")
+
 	assert.Contains(t,
 		collections.MapSlice(got.Extensions.Keys(), component.ID.String),
 		"awscloudwatchlogsprovisioner")
