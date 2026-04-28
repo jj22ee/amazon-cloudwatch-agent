@@ -58,11 +58,7 @@ func (t *translator) Translate(conf *confmap.Conf) (*common.ComponentTranslators
 		return nil, &common.MissingKeyError{ID: t.ID(), JsonKey: configKeys[0]}
 	}
 
-	// Read log group/stream config.
-	// The customer specifies a log group name which may contain {service.name} or
-	// similar placeholders. We split it into a prefix and let the transform
-	// processor build the full name at runtime using Concat.
-	logGroupPrefix, logStreamName := resolveLogConfig(conf, configKeys)
+	logGroupTemplate, logStreamTemplate := resolveLogConfig(conf, configKeys)
 
 	translators := &common.ComponentTranslators{
 		Receivers:  otlp.NewTranslators(conf, common.AppSignals, pipeline.SignalLogs.String()),
@@ -71,8 +67,8 @@ func (t *translator) Translate(conf *confmap.Conf) (*common.ComponentTranslators
 		Extensions: common.NewTranslatorMap[component.Config, component.ID](),
 	}
 
-	// Processors: transform (build log group name) → attributestocontext → batch
-	translators.Processors.Set(newTransformTranslator(logGroupPrefix, logStreamName))
+	// Processors: transform (build log group/stream names) → attributestocontext → batch
+	translators.Processors.Set(newTransformTranslator(logGroupTemplate, logStreamTemplate))
 	translators.Processors.Set(newAttributesToContextTranslator())
 	translators.Processors.Set(newBatchTranslator())
 
@@ -91,13 +87,18 @@ func (t *translator) Translate(conf *confmap.Conf) (*common.ComponentTranslators
 	return translators, nil
 }
 
-// resolveLogConfig reads log_group_name and log_stream_name from the config.
-// If log_group_name contains {service.name} (or similar), extracts the prefix
-// portion before the placeholder for use with the transform processor's Concat.
-// For example: "/aws/telemetry/{service.name}" → prefix="/aws/telemetry/"
-func resolveLogConfig(conf *confmap.Conf, configKeys []string) (logGroupPrefix, logStreamName string) {
+// templateSegment represents either a literal string or an attribute reference
+// in a log group/stream name template.
+type templateSegment struct {
+	literal   string
+	attribute string // e.g. "service.name" — empty for literal segments
+}
+
+// resolveLogConfig reads log_group_name and log_stream_name from the config
+// and parses them into template segments for OTTL Concat generation.
+func resolveLogConfig(conf *confmap.Conf, configKeys []string) (logGroupTemplate, logStreamTemplate []templateSegment) {
 	logGroupName := ""
-	logStreamName = defaultLogStreamName
+	logStreamName := defaultLogStreamName
 
 	for _, key := range configKeys {
 		if v, ok := common.GetString(conf, common.ConfigKey(key, "log_group_name")); ok {
@@ -109,19 +110,35 @@ func resolveLogConfig(conf *confmap.Conf, configKeys []string) (logGroupPrefix, 
 	}
 
 	if logGroupName == "" {
-		return defaultLogGroupPrefix, logStreamName
+		logGroupName = defaultLogGroupPrefix + "{service.name}"
 	}
 
-	// Extract prefix from log group name template.
-	// If it contains a placeholder like {service.name}, take everything before it.
-	// The transform processor will Concat(prefix, service.name) at runtime.
-	if idx := strings.Index(logGroupName, "{"); idx >= 0 {
-		logGroupPrefix = logGroupName[:idx]
-	} else {
-		logGroupPrefix = logGroupName
-	}
+	return parseTemplate(logGroupName), parseTemplate(logStreamName)
+}
 
-	return logGroupPrefix, logStreamName
+// parseTemplate splits a template string like "/a/{service.name}/b/{attr}"
+// into alternating literal and attribute segments.
+func parseTemplate(tmpl string) []templateSegment {
+	var segments []templateSegment
+	for len(tmpl) > 0 {
+		openIdx := strings.Index(tmpl, "{")
+		if openIdx < 0 {
+			segments = append(segments, templateSegment{literal: tmpl})
+			break
+		}
+		if openIdx > 0 {
+			segments = append(segments, templateSegment{literal: tmpl[:openIdx]})
+		}
+		closeIdx := strings.Index(tmpl[openIdx:], "}")
+		if closeIdx < 0 {
+			segments = append(segments, templateSegment{literal: tmpl[openIdx:]})
+			break
+		}
+		attrName := tmpl[openIdx+1 : openIdx+closeIdx]
+		segments = append(segments, templateSegment{attribute: attrName})
+		tmpl = tmpl[openIdx+closeIdx+1:]
+	}
+	return segments
 }
 
 // AutoEnableIfNeeded injects logs.logs_collected.application_signals with defaults

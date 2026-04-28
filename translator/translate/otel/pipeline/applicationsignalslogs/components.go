@@ -5,6 +5,7 @@ package applicationsignalslogs
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/awscloudwatchlogsprovisionerextension"
@@ -74,16 +75,17 @@ func (t *provisionerTranslator) Translate(_ *confmap.Conf) (component.Config, er
 }
 
 // --- transform processor translator ---
-// Builds full log group/stream names into resource attributes from service.name.
-// E.g., service.name="pet-clinic" + prefix="/aws/telemetry/" → cwlogs.log_group="/aws/telemetry/pet-clinic"
+// Builds full log group/stream names into resource attributes using OTTL Concat.
+// Supports arbitrary placeholders: "/a/{service.name}/b/{attr}" generates
+// Concat(["/a/", resource.attributes["service.name"], "/b/", resource.attributes["attr"]], "")
 
 type transformTranslator struct {
-	logGroupPrefix string
-	logStreamName  string
+	logGroupTemplate  []templateSegment
+	logStreamTemplate []templateSegment
 }
 
-func newTransformTranslator(logGroupPrefix, logStreamName string) common.ComponentTranslator {
-	return &transformTranslator{logGroupPrefix: logGroupPrefix, logStreamName: logStreamName}
+func newTransformTranslator(logGroupTemplate, logStreamTemplate []templateSegment) common.ComponentTranslator {
+	return &transformTranslator{logGroupTemplate: logGroupTemplate, logStreamTemplate: logStreamTemplate}
 }
 
 func (t *transformTranslator) ID() component.ID {
@@ -91,23 +93,15 @@ func (t *transformTranslator) ID() component.ID {
 }
 
 func (t *transformTranslator) Translate(_ *confmap.Conf) (component.Config, error) {
-	// Build the OTTL statements that construct the full log group/stream names
-	// as resource attributes, so attributestocontext can copy them to metadata.
-	concatStmt := fmt.Sprintf(
-		`set(resource.attributes["%s"], Concat(["%s", resource.attributes["service.name"]], ""))`,
-		metadataKeyLogGroup, t.logGroupPrefix,
-	)
-	streamStmt := fmt.Sprintf(
-		`set(resource.attributes["%s"], "%s")`,
-		metadataKeyLogStream, t.logStreamName,
-	)
+	groupStmt := buildOTTLSetStatement(metadataKeyLogGroup, t.logGroupTemplate)
+	streamStmt := buildOTTLSetStatement(metadataKeyLogStream, t.logStreamTemplate)
 
 	cfgMap := map[string]interface{}{
 		"log_statements": []interface{}{
 			map[string]interface{}{
 				"context": "resource",
 				"statements": []interface{}{
-					concatStmt,
+					groupStmt,
 					streamStmt,
 				},
 			},
@@ -119,6 +113,37 @@ func (t *transformTranslator) Translate(_ *confmap.Conf) (component.Config, erro
 		return nil, fmt.Errorf("failed to configure transform processor: %w", err)
 	}
 	return cfg, nil
+}
+
+// buildOTTLSetStatement generates an OTTL statement from template segments.
+// Pure literals → set(resource.attributes["key"], "value")
+// With placeholders → set(resource.attributes["key"], Concat(["lit", resource.attributes["attr"], ...], ""))
+func buildOTTLSetStatement(metadataKey string, segments []templateSegment) string {
+	hasAttributes := false
+	for _, seg := range segments {
+		if seg.attribute != "" {
+			hasAttributes = true
+			break
+		}
+	}
+
+	if !hasAttributes {
+		var literal string
+		for _, seg := range segments {
+			literal += seg.literal
+		}
+		return fmt.Sprintf(`set(resource.attributes["%s"], "%s")`, metadataKey, literal)
+	}
+
+	var parts []string
+	for _, seg := range segments {
+		if seg.attribute != "" {
+			parts = append(parts, fmt.Sprintf(`resource.attributes["%s"]`, seg.attribute))
+		} else {
+			parts = append(parts, fmt.Sprintf(`"%s"`, seg.literal))
+		}
+	}
+	return fmt.Sprintf(`set(resource.attributes["%s"], Concat([%s], ""))`, metadataKey, strings.Join(parts, ", "))
 }
 
 // --- attributestocontext processor translator ---

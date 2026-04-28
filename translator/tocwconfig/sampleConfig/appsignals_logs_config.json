@@ -5,8 +5,8 @@
   "logs": {
     "logs_collected": {
       "application_signals": {
-        "log_group_name": "/custom/prefix/{service.name}",
-        "log_stream_name": "my-stream"
+        "log_group_name": "/{deployment.environment}/prefix/{service.name}",
+        "log_stream_name": "{host.name}/{service.instance.id}"
       }
     }
   }

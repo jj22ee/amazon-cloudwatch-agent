@@ -126,37 +126,157 @@ func TestTranslatorWithFallbackKey(t *testing.T) {
 	require.NotNil(t, got)
 }
 
-func TestResolveLogConfig(t *testing.T) {
+func TestParseTemplate(t *testing.T) {
 	tests := []struct {
-		name           string
-		logGroupName   string
-		logStreamName  string
-		expectPrefix   string
-		expectStream   string
+		name     string
+		input    string
+		expected []templateSegment
 	}{
 		{
-			name:         "default (no config)",
-			expectPrefix: defaultLogGroupPrefix,
-			expectStream: defaultLogStreamName,
+			name:     "pure literal",
+			input:    "/static/group",
+			expected: []templateSegment{{literal: "/static/group"}},
+		},
+		{
+			name:  "single placeholder",
+			input: "/prefix/{service.name}",
+			expected: []templateSegment{
+				{literal: "/prefix/"},
+				{attribute: "service.name"},
+			},
+		},
+		{
+			name:  "placeholder at start",
+			input: "{service.name}/suffix",
+			expected: []templateSegment{
+				{attribute: "service.name"},
+				{literal: "/suffix"},
+			},
+		},
+		{
+			name:  "multiple placeholders",
+			input: "/a/{attr.one}/b/{attr.two}/c",
+			expected: []templateSegment{
+				{literal: "/a/"},
+				{attribute: "attr.one"},
+				{literal: "/b/"},
+				{attribute: "attr.two"},
+				{literal: "/c"},
+			},
+		},
+		{
+			name:  "adjacent placeholders",
+			input: "{attr.one}{attr.two}",
+			expected: []templateSegment{
+				{attribute: "attr.one"},
+				{attribute: "attr.two"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseTemplate(tt.input)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestBuildOTTLSetStatement(t *testing.T) {
+	tests := []struct {
+		name     string
+		segments []templateSegment
+		expected string
+	}{
+		{
+			name:     "pure literal",
+			segments: []templateSegment{{literal: "my-stream"}},
+			expected: `set(resource.attributes["cwlogs.log_stream"], "my-stream")`,
+		},
+		{
+			name: "single placeholder with prefix",
+			segments: []templateSegment{
+				{literal: "/prefix/"},
+				{attribute: "service.name"},
+			},
+			expected: `set(resource.attributes["cwlogs.log_stream"], Concat(["/prefix/", resource.attributes["service.name"]], ""))`,
+		},
+		{
+			name: "multiple placeholders",
+			segments: []templateSegment{
+				{literal: "/a/"},
+				{attribute: "attr.one"},
+				{literal: "/b/"},
+				{attribute: "attr.two"},
+			},
+			expected: `set(resource.attributes["cwlogs.log_stream"], Concat(["/a/", resource.attributes["attr.one"], "/b/", resource.attributes["attr.two"]], ""))`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildOTTLSetStatement(metadataKeyLogStream, tt.segments)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestResolveLogConfig(t *testing.T) {
+	tests := []struct {
+		name                string
+		logGroupName        string
+		logStreamName       string
+		expectGroupTemplate []templateSegment
+		expectStreamTemplate []templateSegment
+	}{
+		{
+			name: "default (no config)",
+			expectGroupTemplate: []templateSegment{
+				{literal: defaultLogGroupPrefix},
+				{attribute: "service.name"},
+			},
+			expectStreamTemplate: []templateSegment{{literal: defaultLogStreamName}},
 		},
 		{
 			name:         "with placeholder",
 			logGroupName: "/custom/prefix/{service.name}",
-			expectPrefix: "/custom/prefix/",
-			expectStream: defaultLogStreamName,
+			expectGroupTemplate: []templateSegment{
+				{literal: "/custom/prefix/"},
+				{attribute: "service.name"},
+			},
+			expectStreamTemplate: []templateSegment{{literal: defaultLogStreamName}},
 		},
 		{
-			name:          "static group (no placeholder)",
+			name:          "static group and stream (no placeholders)",
 			logGroupName:  "/static/group",
 			logStreamName: "my-stream",
-			expectPrefix:  "/static/group",
-			expectStream:  "my-stream",
+			expectGroupTemplate:  []templateSegment{{literal: "/static/group"}},
+			expectStreamTemplate: []templateSegment{{literal: "my-stream"}},
 		},
 		{
-			name:         "placeholder at start",
-			logGroupName: "{service.name}/suffix",
-			expectPrefix: "",
-			expectStream: defaultLogStreamName,
+			name:         "multiple placeholders in group",
+			logGroupName: "/a/{attr.one}/b/{service.name}",
+			expectGroupTemplate: []templateSegment{
+				{literal: "/a/"},
+				{attribute: "attr.one"},
+				{literal: "/b/"},
+				{attribute: "service.name"},
+			},
+			expectStreamTemplate: []templateSegment{{literal: defaultLogStreamName}},
+		},
+		{
+			name:          "placeholders in both group and stream",
+			logGroupName:  "/logs/{service.name}",
+			logStreamName: "{host.name}/{service.instance.id}",
+			expectGroupTemplate: []templateSegment{
+				{literal: "/logs/"},
+				{attribute: "service.name"},
+			},
+			expectStreamTemplate: []templateSegment{
+				{attribute: "host.name"},
+				{literal: "/"},
+				{attribute: "service.instance.id"},
+			},
 		},
 	}
 
@@ -181,9 +301,9 @@ func TestResolveLogConfig(t *testing.T) {
 			conf := confmap.NewFromStringMap(cfgMap)
 			configKeys := common.AppSignalsConfigKeys[pipeline.SignalLogs]
 
-			prefix, stream := resolveLogConfig(conf, configKeys)
-			assert.Equal(t, tt.expectPrefix, prefix)
-			assert.Equal(t, tt.expectStream, stream)
+			groupTemplate, streamTemplate := resolveLogConfig(conf, configKeys)
+			assert.Equal(t, tt.expectGroupTemplate, groupTemplate)
+			assert.Equal(t, tt.expectStreamTemplate, streamTemplate)
 		})
 	}
 }
