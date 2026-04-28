@@ -218,7 +218,7 @@ func TestBuildOTTLSetStatement(t *testing.T) {
 		{
 			name:     "pure literal",
 			segments: []templateSegment{{literal: "my-stream"}},
-			expected: `set(resource.attributes["cwlogs.log_stream"], "my-stream")`,
+			expected: `set(resource.attributes["cwlogs.log_stream"], "my-stream") where resource.attributes["cwlogs.log_stream"] == nil`,
 		},
 		{
 			name: "single placeholder with prefix",
@@ -226,7 +226,7 @@ func TestBuildOTTLSetStatement(t *testing.T) {
 				{literal: "/prefix/"},
 				{attribute: "service.name"},
 			},
-			expected: `set(resource.attributes["cwlogs.log_stream"], Concat(["/prefix/", resource.attributes["service.name"]], ""))`,
+			expected: `set(resource.attributes["cwlogs.log_stream"], Concat(["/prefix/", resource.attributes["service.name"]], "")) where resource.attributes["cwlogs.log_stream"] == nil`,
 		},
 		{
 			name: "multiple placeholders",
@@ -236,7 +236,7 @@ func TestBuildOTTLSetStatement(t *testing.T) {
 				{literal: "/b/"},
 				{attribute: "attr.two"},
 			},
-			expected: `set(resource.attributes["cwlogs.log_stream"], Concat(["/a/", resource.attributes["attr.one"], "/b/", resource.attributes["attr.two"]], ""))`,
+			expected: `set(resource.attributes["cwlogs.log_stream"], Concat(["/a/", resource.attributes["attr.one"], "/b/", resource.attributes["attr.two"]], "")) where resource.attributes["cwlogs.log_stream"] == nil`,
 		},
 	}
 

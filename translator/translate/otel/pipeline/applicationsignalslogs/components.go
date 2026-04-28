@@ -116,9 +116,11 @@ func (t *transformTranslator) Translate(_ *confmap.Conf) (component.Config, erro
 }
 
 // buildOTTLSetStatement generates an OTTL statement from template segments.
-// Pure literals → set(resource.attributes["key"], "value")
-// With placeholders → set(resource.attributes["key"], Concat(["lit", resource.attributes["attr"], ...], ""))
+// A `where` guard ensures the attribute is only set when not already present,
+// so SDK-set values take precedence over the template.
 func buildOTTLSetStatement(metadataKey string, segments []templateSegment) string {
+	whereGuard := fmt.Sprintf(` where resource.attributes["%s"] == nil`, metadataKey)
+
 	hasAttributes := false
 	for _, seg := range segments {
 		if seg.attribute != "" {
@@ -132,7 +134,7 @@ func buildOTTLSetStatement(metadataKey string, segments []templateSegment) strin
 		for _, seg := range segments {
 			literal += seg.literal
 		}
-		return fmt.Sprintf(`set(resource.attributes["%s"], "%s")`, metadataKey, literal)
+		return fmt.Sprintf(`set(resource.attributes["%s"], "%s")`, metadataKey, literal) + whereGuard
 	}
 
 	var parts []string
@@ -143,7 +145,7 @@ func buildOTTLSetStatement(metadataKey string, segments []templateSegment) strin
 			parts = append(parts, fmt.Sprintf(`"%s"`, seg.literal))
 		}
 	}
-	return fmt.Sprintf(`set(resource.attributes["%s"], Concat([%s], ""))`, metadataKey, strings.Join(parts, ", "))
+	return fmt.Sprintf(`set(resource.attributes["%s"], Concat([%s], ""))`, metadataKey, strings.Join(parts, ", ")) + whereGuard
 }
 
 // --- attributestocontext processor translator ---

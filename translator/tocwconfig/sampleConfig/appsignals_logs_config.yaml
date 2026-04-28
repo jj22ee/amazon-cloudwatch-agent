@@ -76,8 +76,8 @@ processors:
             - context: resource
               error_mode: ""
               statements:
-                - set(resource.attributes["cwlogs.log_group"], Concat(["/", resource.attributes["deployment.environment"], "/prefix/", resource.attributes["service.name"]], ""))
-                - set(resource.attributes["cwlogs.log_stream"], Concat([resource.attributes["host.name"], "/", resource.attributes["service.instance.id"]], ""))
+                - set(resource.attributes["cwlogs.log_group"], Concat(["/", resource.attributes["deployment.environment"], "/prefix/", resource.attributes["service.name"]], "")) where resource.attributes["cwlogs.log_group"] == nil
+                - set(resource.attributes["cwlogs.log_stream"], Concat([resource.attributes["host.name"], "/", resource.attributes["service.instance.id"]], "")) where resource.attributes["cwlogs.log_stream"] == nil
         metric_statements: []
         trace_statements: []
 receivers:
