@@ -115,20 +115,6 @@ exporters:
                   separator: ;
               metric_name_selectors:
                 - ^.*$
-            - dimensions:
-                - - environment
-                  - exception
-                  - operation
-                  - service_name
-              label_matchers:
-                - label_names:
-                    - Telemetry.Source
-                  regex: ^Telemend$
-                  separator: ;
-              log_group_name: /aws/telemend/metrics
-              metric_name_selectors:
-                - Count
-              namespace: Telemend
         middleware: agenthealth/logs
         namespace: ApplicationSignals
         no_verify_ssl: false
