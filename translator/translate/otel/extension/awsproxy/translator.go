@@ -77,6 +77,17 @@ func (t *translator) Translate(conf *confmap.Conf) (component.Config, error) {
 			ServiceName: "application-signals",
 			AWSEndpoint: fmt.Sprintf("https://application-signals.%s.api.aws", cfg.ProxyConfig.Region),
 		},
+		// EXPERIMENT: route root-path requests to the EC2 Query API, signed with the agent's
+		// credentials. Lets an ADOT SDK (which lacks ec2:DescribeTags) resolve the instance's
+		// Auto Scaling group name via the proxy. EC2 is a query-protocol service: every call
+		// hits path "/" with Action=DescribeTags in the form body, so the match key is "" (the
+		// TrimPrefix of "/"). Only GetSamplingRules/GetSamplingTargets (REST-path) use this
+		// proxy for X-Ray, so claiming the root path for EC2 does not collide.
+		{
+			Paths:       []string{""},
+			ServiceName: "ec2",
+			AWSEndpoint: fmt.Sprintf("https://ec2.%s.amazonaws.com", cfg.ProxyConfig.Region),
+		},
 	}
 	return cfg, nil
 }
